@@ -1,0 +1,748 @@
+---
+title: "MAT 272: Final Project - USA Airport Data"
+author: "Shane L. Fabbri & Anthony J. Mercure"
+date: "`r Sys.Date()`"
+output:
+  html_document: default
+  word_document: default
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# **Introduction of Data Set & Data Variables**
+
+  - Source: https://www.kaggle.com/datasets/flashgordon/usa-airport-dataset
+
+Air transportation plays a crucial role in the modern world, facilitating the movement of people and goods across vast distances, promoting economic growth, and connecting cities and countries. Understanding patterns and trends in air travel can provide insights into the needs and preferences of travelers, as well as inform decision-making for airline companies, airports, and policymakers. In this project, we aim to analyze a comprehensive dataset, taken from the Openflights website and authored by Jacob Perkins, on domestic flights within the United States between 1990 and 2010 to explore various aspects of air travel and convey meaningful information to a general audience.
+
+Our primary research goal is to identify trends and relationships among the variables in the dataset, which could provide valuable insights into the factors that influence air travel patterns in the United States. We are particularly interested in examining the relationships between the number of passengers, flights, seats, and distances, as well as the impacts of city population and flight date on these variables. In addition to examining the relationships between dates and passengers, we hypothesize that larger cities with higher populations are likely to have more flights, passengers, and seats, and that the distance between cities might also influence these numbers. 
+
+By analyzing this data and presenting our findings in a clear and understandable manner, we hope to convey valuable information to a general audience, ultimately contributing to a better understanding of the complex dynamics of air travel in the United States.
+
+------------------------------------------------------------------------------------------------------------------------
+
+# **Reading the Data and Extracting Information**
+
+```{r}
+# importing necessary libraries
+library(tidyverse) # includes dplyr, for easier dataframe manipulation and ggplot2, for sexy plots
+library(data.table) # reads the big data set way faster than the native read.csv()
+library(lubridate) # easier and faster parsing of dates
+library(scales) # customize legends and axes
+```
+
+```{r}
+# Read the data
+airports <- fread("Airports2.csv", header = TRUE)
+head(airports) 
+```
+
+## What's in it?
+
+```{r}
+# Look at all those observations 
+dim(airports)
+```
+
+```{r}
+# Summary of variables
+summary(airports) 
+```
+
+### Variable Descriptions
+
+There are 15 feature variables in the data set:
+
+- Origin_airport: A three-letter code representing the airport from where the flight originated.
+
+- Destination_airport: A three-letter code representing the airport where the flight is headed.
+
+- Origin_city: The name of the city from where the flight originated.
+
+- Destination_city: The name of the city where the flight is headed.
+
+- Passengers: The number of passengers who traveled from the origin to the destination.
+
+- Seats: The number of available seats on flights between the origin and destination.
+
+- Flights: The total number of flights operating between the origin and destination, recorded multiple times for a single month.
+
+- Distance: The distance, in miles, between the origin and destination airports.
+
+- Fly_date: The year and month (in yyyymm format) when the flight took place.
+
+- Origin_population: The population of the city where the flight originated, according to US Census data.
+
+- Destination_population: The population of the city where the flight is headed, according to US Census data.
+
+------------------------------------------------------------------------------------------------------------------------
+
+# **Data Cleaning**
+
+## Handling Missing Values
+
+```{r}
+colSums(is.na(airports))
+```
+
+```{r}
+# Dropping any observations with null values
+airports_clean <- na.omit(airports)
+```
+
+```{r}
+colSums(is.na(airports_clean))
+```
+
+## Sorting 
+
+```{r}
+# Sorting dataset by date
+airports_clean <- arrange(airports_clean, Fly_date)
+airports_clean$Fly_date <- as.integer(format(as.Date(airports_clean$Fly_date), "%Y%m%d"))
+airports_clean[(airports_clean$Passengers == 0)]
+```
+
+------------------------------------------------------------------------------------------------------------------------
+
+# **Descriptive Statistics & Data Visualization**
+
+```{r}
+# Aggregating the passenger data by airport code, using the destination airport column
+# This means that we're counting the number of passengers that arrive at each airport, rather than depart from it
+airports_pas <- aggregate(airports_clean$Passengers, list(airports_clean$Destination_airport), mean)
+
+# Sorting the data frame by mean number of passengers
+# We use "desc(x)" to sort in descending order by the second column of the data frame, which contains the mean passengers
+airports_pas <- arrange(airports_pas, desc(x))
+
+# Renaming the column names for better readability
+# The first column is the airport code, and the second column is the mean number of passengers
+colnames(airports_pas) <- c("Airport", "Mean_Passengers")
+```
+
+```{r}
+# Bar plot to show which airports had the most passenger traffic from 1990 to 2010
+ggplot(head(airports_pas, 20), aes(Airport, Mean_Passengers)) + 
+  # Create bar plot with mean passengers on y-axis
+  geom_bar(stat="identity", width=0.7, fill="#A00000") +
+  # Set color palette for bars
+  scale_fill_brewer(palette="Paired") +
+  # Add labels for x- and y-axis
+  xlab("Airport") + ylab("Total Passengers") +
+  # Add title for plot
+  ggtitle("Mean Passengers by Airport") +
+  # Adjust plot title, axis labels, and font sizes
+  theme(plot.title = element_text(hjust = 0.5, size=16, face="bold"), 
+        axis.text.x=element_text(angle=45, vjust=1, size=12, face="bold"),
+        axis.text.y=element_text(size=12, face="bold"),
+        axis.title=element_text(size=14, face="bold"),
+        # Add dashed horizontal lines for y-axis grid
+        panel.grid.major.y = element_line(color = "#DDDDDD", linetype = "dashed"),
+        # Set plot background color to white
+        panel.background=element_rect(fill="white"))
+```
+
+```{r}
+# Group airports by destination city and calculate mean population and total passengers
+pop_pas <- airports_clean %>%
+  group_by(Destination_city) %>%
+  summarize("Mean Population" = mean(Destination_population),
+            "Total Passengers" = sum(Passengers)) %>%
+  # Rename Destination_city column to City
+  rename(City = Destination_city)
+
+# Sort the data frame in descending order based on Total Passengers
+pop_pas <- pop_pas <- arrange(pop_pas, desc(`Total Passengers`))
+
+# Print the first five rows of the data frame
+head(pop_pas)
+```
+
+```{r}
+# Checking correlation between mean population and total passengers
+r <- cor(pop_pas$`Mean Population`, pop_pas$`Total Passengers`)
+# Print results
+cat("Correlation coefficient: ", round(r, 3), "\n")
+cat("This shows a strong positive correlation between Mean Population and Total Passengers.\n")
+```
+
+```{r}
+# Scatter mean city population and total passenger traffic for top eight cities with most traffic
+ggplot(head(pop_pas, 10), aes(x = `Mean Population`, y = `Total Passengers`, color = `City`)) +
+  geom_point(size = 4) + # Adding points to the plot to represent each city's data
+  # Using a logarithmic scale on both axes to account for the large range of values
+  scale_x_log10(labels = scales::comma) + # Setting x-axis scale as logarithmic and adding comma separators
+  scale_y_log10(labels = scales::comma) + # Setting y-axis scale as logarithmic and adding comma separators
+  scale_color_manual(values = c("blue", "red", "green", "orange", "purple", "brown", "grey", "pink", "black", "maroon")) + # Setting the color scale for each city's data points
+  labs(title = "City Population and Passenger Traffic 1990-2010", # Setting the plot title and axis labels
+       x = "Mean Population (log10)",
+       y = "Total Passengers (log10)",
+       color = "City") +
+  theme(plot.title = element_text(hjust = 0.5, size = 16, face = "bold"), # Customizing the plot theme
+        axis.title = element_text(size = 14, face = "bold"),
+        axis.text = element_text(size = 12),
+        legend.key.size = unit(1.7, "lines"),
+        legend.title = element_text(face = "bold")) # Setting the size of the legend key
+```
+
+
+```{r}
+# Create a data frame containing dates and passengers on each flight on that date
+dates_passengers <- airports_clean[, c("Passengers", "Fly_date")]
+head(dates_passengers)
+```
+
+```{r}
+# Add new columns for month and year
+dates_passengers$Year <- substr(dates_passengers$Fly_date, 1, 4)
+dates_passengers$Month <- substr(dates_passengers$Fly_date, 5, 6)
+head(dates_passengers)
+```
+
+```{r}
+# Creating data frames for total passengers a month, a year, and all months in each year
+passengers_by_month <- aggregate(Passengers ~ Month, data = dates_passengers, FUN = mean)
+passengers_by_year <- aggregate(Passengers ~ Year, data = dates_passengers, FUN = mean)
+passengers_full_date <- aggregate(Passengers ~ Fly_date, data = dates_passengers, FUN = mean)
+```
+
+```{r}
+# Add new Date column where the numerical Fly_date is converted into a date class 
+passengers_full_date$Date <- as.Date(as.character(passengers_full_date$Fly_date), format = "%Y%m%d")
+head(passengers_full_date)
+```
+
+```{r}
+# Create a bar plot of mean passengers by month
+ggplot(passengers_by_month, aes(x = Month, y = Passengers)) +
+  # Add a bar layer using 'geom_col' and set the fill color to purple
+  geom_col(fill = "#800080") +
+  # Add labels for the x-axis, y-axis, and plot title using 'labs'
+  labs(x = "Month", y = "Mean Passengers", title = "Mean Passengers by Month 1990-2010") +
+  # Customize the appearance of the plot using 'theme'
+  theme(plot.title = element_text(hjust = 0.5, size = 18, face = "bold"),  # Center and bold the plot title
+        axis.title = element_text(size = 14, face = "bold"),               # Increase font size and bold axis titles
+        axis.text = element_text(size = 12),                               # Increase font size for axis labels
+        axis.text.x=element_text(size=12, face= "bold"),
+        axis.text.y=element_text(size=12, face="bold"),
+        panel.grid.major = element_blank(),                                # Remove major grid lines
+        panel.grid.minor = element_blank(),                                # Remove minor grid lines
+        panel.background = element_blank(),                                # Remove plot background
+        axis.line = element_line(color = "black"))                         # Add a black axis line
+
+```
+
+```{r}
+# Create a bar chart with Year on x-axis and Passengers on y-axis
+ggplot(passengers_by_year, aes(x = Year, y = Passengers)) +
+  # Use geom_bar to create the bars and set fill and color options
+  geom_bar(stat = "identity", fill = "#008000", color = "#FF0000") +
+  # Set axis labels and chart title using labs function
+  labs(x = "Year", y = "Mean Passengers", title = "Mean Passengers by Year 1990-2010") + 
+  # Set theme options to adjust the appearance of the chart
+  theme(
+    plot.title = element_text(hjust = 0.5, size = 18, face = "bold"),
+    axis.title = element_text(size = 14, face = "bold"),
+    axis.text = element_text(size = 12),
+    axis.text.x=element_text(angle = 45, vjust = 0.5, size=12, face= "bold"),
+    axis.text.y=element_text(size=12, face="bold"),
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+    panel.background = element_blank(),,
+    axis.line = element_line(color = "black")
+  )
+```
+
+------------------------------------------------------------------------------------------------------------------------
+
+# **Estimating Population Mean**
+
+## Hypothesis on Mean Number of Passengers Flying
+
+```{r}
+# Making a data frame containing the number of passengers for each flight
+passengers <- data.frame(Passengers = airports_clean$Passengers)
+head(passengers)
+```
+
+```{r}
+# Box plot for Passengers
+ggplot(passengers, aes(y = Passengers)) +
+  geom_boxplot(fill = "lightblue", color = "gray40") + # added color to box plot
+  labs(title = "Passengers Box Plot", y = "Passengers") + 
+  theme(plot.title = element_text(hjust = 0.5, size = 18, face = "bold"),
+        axis.title = element_text(size = 14, face = "bold"),
+        axis.text = element_text(size = 12),
+        axis.text.x = element_blank(),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        panel.background = element_blank(),
+        axis.line = element_line(color = "black"),
+        plot.background = element_rect(fill = "white"), # Changed plot background to white
+        plot.margin = unit(c(1, 1, 1, 2), "cm")) # Increased right margin
+```
+
+```{r}
+# The boxplot shows a lot of extreme values
+outliers <- boxplot.stats(passengers$Passengers)$out
+num_outliers <- length(outliers)
+# Checking the number of outliers
+cat("Outliers:", num_outliers)
+```
+
+```{r}
+# Trimming outliers above the 87th percentile
+p90 <- quantile(passengers$Passengers, 0.87)
+passengers <- data.frame(Passengers = passengers[passengers$Passengers <= p90, ])
+```
+
+```{r}
+# Rechecking number of outliers
+outliers <- boxplot.stats(passengers$Passengers)$out
+num_outliers <- length(outliers)
+print(num_outliers)
+```
+
+```{r}
+# Box plot for passengers without as many extreme values
+ggplot(passengers, aes(y = Passengers)) +
+  geom_boxplot(fill = "lightblue", color = "gray40") + # added color to box plot
+  labs(title = "Trimmed Passengers Box Plot", y = "Passengers") + 
+  theme(plot.title = element_text(hjust = 0.5, size = 18, face = "bold"),
+        axis.title = element_text(size = 14, face = "bold"),
+        axis.text = element_text(size = 12),
+        axis.text.x = element_blank(),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        panel.background = element_blank(),
+        axis.line = element_line(color = "black"),
+        plot.background = element_rect(fill = "white"), # Changed plot background to white
+        plot.margin = unit(c(1, 1, 1, 2), "cm")) # Increased right margin
+```
+
+```{r}
+# Generating a random sample of passengers
+samp_passengers <- passengers[sample(nrow(passengers), 10000, replace = FALSE),]
+```
+
+```{r}
+# Printing the mean number of passenger traffic of the population
+print(paste("Mean of Number of Passengers Flying:", mean(passengers$Passengers)))
+# Printing the mean number of passenger traffic of the sample
+print(paste("Mean of Random Sample of Number of Passengers Flying:", mean(samp_passengers)))
+```
+
+```{r}
+# Probability distribution and density plot of Passengers
+ggplot(passengers, aes(x=Passengers)) +
+  geom_histogram(aes(y = ..density..), binwidth = 200, fill = "yellow", color = "black") +
+  geom_density() +
+  geom_vline(aes(xintercept = mean(passengers$Passengers), color = "Null Hypothesis"),  
+             linetype = "dashed", 
+             size = 1, 
+             alpha = 0.5) +
+  geom_vline(aes(xintercept = mean(samp_passengers), color = "Sample Mean"),  
+             linetype = "dashed", 
+             size = 1, 
+             alpha = 0.5) +
+  xlim(c(-219.6, max(passengers$Passengers) * 1.2)) +
+  ylim(c(0, 0.0018936)) +
+  labs(title = "Probability Distribution of Passenger Traffic",
+       x = "Passengers",
+       y = "Density",
+       color = "") +
+  theme(plot.title = element_text(hjust = 0.5, size = 18, face = "bold"),
+        legend.position = "top",
+        legend.text = element_text(size = 12),
+        legend.box.background = element_rect(color = "black", size = 1),
+        legend.box.margin = margin(6, 6, 6, 6),
+        legend.key.width = unit(2, "cm"),
+        legend.key.height = unit(1, "cm"),
+        axis.text = element_text(size = 12),
+        axis.title = element_text(size = 14, face = "bold"),
+        panel.background = element_blank(),
+        panel.grid.major = element_line(colour = "gray90", size = 0.5),
+        panel.grid.minor = element_blank())
+```
+
+We are interested in testing the claim that the mean number of passengers from 1990-2010 is equal to 1407.
+
+- Let $\mu$ represent the population mean number of passengers.
+
+- $H_0:$ The mean number of passengers is equal to 1407. $\mu =\ 1407$
+- $H_1:$ The mean number of passengers is not equal to 1407. $\mu \neq\ 1407$ 
+
+By conducting a two-tailed z-test for the population mean, we can either reject the null hypothesis or fail to reject it, providing evidence in favor or against the alternative hypothesis, respectively.
+
+```{r}
+# Set up variables for calculations
+n <- length(samp_passengers)
+x_bar <- mean(samp_passengers)
+s <- sd(samp_passengers)
+mu <- mean(passengers$Passengers)
+alpha <- 0.05
+
+# Calculate z-test for two-tailed test
+z_test_right <- (x_bar - mu) / (s / (sqrt(n)))
+z_test_left <- z_test_right * -1
+
+# Calculate degrees of freedom and p-value
+df <- n - 1
+p_value <- 2 * pnorm(z_test_left)
+
+# Print result
+cat("P-Value Approach: p =", p_value, "> alpha =", alpha)
+```
+
+Conclusion: Based on the results of the hypothesis test, we fail to reject the null hypothesis at the 5% significance level since the p-value of the test is greater than the chosen significance level. Therefore, we can conclude that there is insufficient evidence to support the claim that the mean number of passengers is not equal to 1407.
+
+------------------------------------------------------------------------------------------------------------------------
+
+## Hypothesis on Origin City Population
+
+```{r}
+# Creating a data frame containing the origin and destination population of the cities
+airport_pops <- airports_clean[, c("Origin_population", "Destination_population")]
+airport_pops <- as.data.frame(airport_pops)
+colnames(airport_pops) <- c("Origin Population", "Destination Population")
+# Pivoting the frame so one column has binary values that link to their population
+airport_pops_long <- pivot_longer(airport_pops, 
+                                  cols = c("Origin Population", "Destination Population"),
+                                  names_to = "Location", 
+                                  values_to = "Population")
+head(airport_pops_long)
+```
+
+```{r}
+ggplot(airport_pops_long, aes(x = Location, y = Population, fill = Location)) + 
+  geom_boxplot() +
+  scale_y_continuous(limits = c(0, 40000000), labels = scales::comma) +
+  labs(title = "Origin and Destination  1990-2010", y = "Population") +
+  theme_minimal(base_size = 14) +
+  theme(plot.title = element_text(hjust = 0.5, size = 20, face = "bold"),
+        axis.title.x = element_blank(),
+        axis.text.x = element_text(size = 12),
+        axis.title.y = element_text(size = 16, face = "bold"),
+        axis.text.y = element_text(size = 12),
+        legend.position = "none",
+        panel.grid.major = element_line(color = "gray", linetype = "dashed"))
+```
+
+```{r}
+oripop <- data.frame(Origin_population = airport_pops$`Origin Population`)
+print(paste("Mean of Origin City Population:", mean(oripop$`Origin_population`)))
+
+destpop <- data.frame(Destination_population = airport_pops$`Destination Population`)
+print(paste("Mean of Destination City Population:", mean(destpop$`Destination_population`)))
+```
+
+```{r}
+samp_ori <- oripop[sample(nrow(oripop), 10000, replace = FALSE),]
+print(paste("Mean of Random Sample of Origin Population", mean(samp_ori)))
+
+samp_dest <- destpop[sample(nrow(destpop), 10000, replace = FALSE),]
+print(paste("Mean of Random Sample of Destination Population", mean(samp_dest)))
+```
+
+```{r}
+sample_pops <- data.frame(Origin_population = samp_ori, Destination_population = samp_dest)
+```
+
+```{r}
+sample_pops_long <- pivot_longer(sample_pops, 
+                                  cols = c("Origin_population", "Destination_population"),
+                                  names_to = "Location", 
+                                  values_to = "Population")
+head(sample_pops_long)
+```
+
+This test aims to determine whether there is evidence to support the claim that the mean population of the origin is less than the mean population of the destination.
+
+- Let $\mu_{0}$ mean population of the origin 
+- Let $\mu_{1}$ mean population of the destination
+ 
+- $H_0:$ The mean population of the origin is equal to the mean population of the destination. $\mu_{0} =\ \mu_{1}$
+- $H_1:$ The mean population of the origin is less than the mean population of the destination. $\mu_{0} <\ \mu_\text{1}$
+
+By conducting a right-tailed z-test for a difference in means, we can either reject the null hypothesis or fail to reject it, providing evidence in favor or against the alternative hypothesis, respectively.
+
+```{r}
+mu1 <- mean(oripop$Origin_population)
+n1 <- length(samp_ori)
+x_bar1 <- mean(samp_ori)
+s1 <- sd(samp_ori)
+
+mu2 <- mean(destpop$Destination_population)
+n2 <- length(samp_dest)
+x_bar2 <- mean(samp_dest)
+s2 <- sd(samp_dest)
+
+point_est <- x_bar2-x_bar1
+
+alpha <- 0.01
+z_alpha2 <- qnorm(1-(alpha/2), 0, 1)
+print(paste("Z Alpha/2:", z_alpha2))
+
+Error <- z_alpha2*( ( ( (s1**2)/n1 ) + ( (s2**2)/n2 ) )**0.5 )
+print(paste("Error:", Error))
+
+lower <- point_est-Error
+upper <- point_est+Error
+print(paste(lower, "< mu <", upper))
+
+df <- ((n1-1)*(n2-1))
+z <- point_est/((((s1**2)/n1)+((s2**2)/n2))**0.5)
+print(paste("Z-Score:", z))
+p_value <- 1-pt(z, df)
+print(paste(p_value, ">", alpha))
+```
+
+Conclusion: Based on the results of the hypothesis test, we fail to reject the null hypothesis at the 1% significance level since the p-value of the test is greater than the chosen significance level. Therefore, we can conclude that there is insufficient evidence to support the claim that The mean population of the origin is less than the mean population of the destination..
+
+------------------------------------------------------------------------------------------------------------------------
+
+## Hypothesis on Mean Number of Flights that Cover 698.87 miles
+
+```{r}
+flights_dist <- airports_clean[, c("Flights", "Distance")]
+
+flights_dist <- as.data.frame(flights_dist, 
+                                 col.names = c("Flights", "Distance"))
+head(flights_dist)
+```
+
+This hypothesis test aims to investigate if the mean number of flights that cover less than or equal to 698.87 miles is significantly greater than the mean number of flights that cover greater than 698.87 miles.
+
+- Let $\mu_{0}$ represent the mean number of flights that cover less than or equal to 698.87 miles.
+- Let $\mu_{1}$ represent the mean number of flights that cover greater than 698.87 miles.
+
+- $H_0:$ The mean number of flights that cover less than or equal to 698.87 miles is the same as the mean number of flights that cover greater than 698.87 miles. $\mu_{0} =\ \mu_{1}$ 
+- $H_1:$ The mean number of flights that cover less than or equal to 698.87 miles is greater than the mean number of flights that cover greater than 698.87 miles. $\mu_{0} >\ \mu_{1}$
+
+By conducting a right-tailed z-test for a population mean, we can either reject the null hypothesis or fail to reject it, providing evidence in favor or against the alternative hypothesis, respectively.
+
+```{r}
+short_haul <- flights_dist[flights_dist$Distance <= 698.87, ]
+
+long_haul <- flights_dist[flights_dist$Distance > 698.87, ]
+```
+
+```{r}
+short_mean <- mean(short_haul$Flights)
+long_mean <- mean(long_haul$Flights)
+```
+
+```{r}
+mean_df <- data.frame(
+  distance = c("Distance <= 698.87", "Distance > 698.87"),
+  mean_flights = c(short_mean, long_mean),
+  stringsAsFactors = FALSE
+)
+```
+
+```{r}
+ggplot(mean_df, aes(x = distance, y = mean_flights, fill = distance)) +
+  geom_bar(stat = "identity", position = "dodge", color = "black") +
+  labs(x = "Distance", y = "Mean Number of Flights", title = "Mean Number of Flights by Distance 1990-2010") +
+  theme_minimal() +
+  theme(plot.title = element_text(hjust = 0.5, size = 16, face = "bold"),
+        legend.position = "none",
+        axis.title.x = element_text(margin = margin(t = 10), face = "bold"),
+        axis.title.y = element_text(margin = margin(r = 10), face = "bold"),
+        axis.text = element_text(size = 12),
+        panel.grid.major.y = element_blank(),
+        panel.grid.minor.y = element_blank(),
+        panel.border = element_blank())
+```
+
+```{r}
+samp_short <- short_haul[sample(nrow(short_haul), 10000, replace = FALSE),]
+
+print(paste("Mean of Random Sample of Flights <= 698.87 Miles:", mean(samp_short$Flights)))
+
+samp_long <- long_haul[sample(nrow(long_haul), 10000, replace = FALSE),]
+
+print(paste("Mean of Random Sample of Flights > 698.87 Miles:", mean(samp_long$Flights)))
+```
+
+```{r}
+u1 <- mean(short_haul$Flights)
+n1 <- length(samp_short$Flights)
+xbar1 <- mean(samp_short$Flights)
+sd1 <- sd(samp_short$Flights)
+
+u2 <- mean(long_haul$Flights)
+n2 <- length(samp_long$Flights)
+xbar2 <- mean(samp_long$Flights)
+sd2 <- sd(samp_long$Flights)
+
+point_est <- xbar1 - xbar2
+
+alpha <- 0.05
+z_alpha <- qt(1 - (alpha/2), n1 - 1, 1)
+print(paste("Z Alpha:", z_alpha))
+
+Error <- z_alpha * ((((sd1**2)/n1) + ((sd2**2)/n2 ))**0.5)
+print(Error)
+print(paste("Error:", Error))
+
+lower <- point_est-Error
+upper <- point_est+Error
+print(paste("mu >=", lower))
+
+df <- n1 -1
+z <- point_est/((((sd1**2)/n1)+((sd2**2)/n2))**0.5)
+print(paste("Z-Score:", z))
+
+p_value <- 2*(pt(-z, df))
+print(paste(p_value, "<", alpha))
+```
+
+Conclusion: Based on the results of the hypothesis test, we reject the null hypothesis at the 5% significance level since the p-value of the test is less than or equal to the chosen significance level. Therefore, we have sufficient evidence to support the alternative hypothesis that the mean number of flights covering less than or equal to 698.87 miles is greater than the mean number of passengers on flights covering greater than 698.87 miles.
+ 
+------------------------------------------------------------------------------------------------------------------------
+
+# **Regression Models**
+
+```{r}
+ggplot(passengers_full_date, aes(x = Date, y = Passengers)) +
+  geom_line(color = "#1f77b4", size = 0.75) + # change line color to blue shade
+  scale_x_date(date_breaks = "1 year", date_labels = "%Y") +
+  geom_smooth(method = "lm", color = "#d62728", formula = y ~ x + I(x^2), linetype = "dashed") + # change line color to red shade, remove standard error shading
+  labs(x = "Year", y = "Number of Passengers", title = "Regression Analysis of Mean Passengers from 1990-2010") + 
+  theme(plot.title = element_text(hjust = 0.5, size = 18, face = "bold"), # increase title size and font weight
+        axis.title = element_text(size = 14, face = "bold"), # increase axis label size and font weight
+        axis.text.x=element_text(angle = 45, vjust = 0.5, size=12, face= "bold"),
+        axis.text.y=element_text(size=12, face="bold"),
+        legend.title = element_blank(), # remove legend title
+        legend.key.size = unit(1, "lines"), # decrease size of legend key
+        panel.background = element_rect(fill = "white"), # set panel background color to white
+        panel.grid.minor = element_blank(), # remove minor grid lines
+        panel.grid.major.x = element_line(color = "#d9d9d9", size = 0.5), # change major grid line color to gray shade
+        panel.grid.major.y = element_line(color = "#d9d9d9", size = 0.5)) # change major grid line color to gray shade
+```
+
+```{r}
+model <- lm(Passengers ~ Fly_date + I(Fly_date^2), data = passengers_full_date)
+ana_model <- anova(model)
+summary(ana_model)
+```
+
+```{r}
+is_categorical <- function(x) {
+  is.factor(x) || is.character(x)
+}
+
+categorical_to_integer <- function(x) {
+  if (is_categorical(x)) {
+    return(as.integer(factor(x)))
+  }
+  return(x)
+}
+
+airports_factorized <- data.frame(lapply(airports_clean, categorical_to_integer))
+
+#print(airports_factorized)
+```
+
+## Hypothesis on Correlation between Passengers and Flights
+```{r}
+cor_matrix <- cor(airports_factorized)
+#cor_matrix
+```
+
+```{r}
+passengers_cor <- cor_matrix[, "Passengers"]
+#passengers_cor
+```
+
+This test aims to determine whether there is evidence to support the claim that there is a correlation between Passengers and Flights.
+
+- $H_0:$ There is no correlation between Passengers and Flights. $\rho = 0$
+- $H_1:$ There is a correlation between Passengers and Flights. $\rho \neq 0$
+
+By conducting a a two-tailed t-test for the correlation coefficient between two variables, we can either reject the null hypothesis or fail to reject it, providing evidence in favor or against the alternative hypothesis, respectively.
+
+```{r}
+r <- cor(airports$Passengers, airports[["Flights"]])
+n <- nrow(airports)
+t <- r * sqrt((n - 2) / sqrt(1 - r^2))
+alpha <- 0.01
+print(paste("t-value:", t))
+
+df <- n - 2
+p_value <- 2 * (1 - pt(abs(t), df))
+print(paste(p_value, "<", alpha))
+```
+
+Conclusion: Based on the results of the hypothesis test, we reject the null hypothesis at the 1% significance level since the p-value of the test is less than or equal to the chosen significance level. Therefore, we have sufficient evidence to support the alternative hypothesis that there is a correlation between Passengers and Flights.
+
+## Correlation of Airports Dataset Variables
+
+This test aims to determine whether there is evidence to support the claim that there is a correlation between Passengers and Seats.
+
+ -     Null hypothesis: $H_0$: There is not a correlation of Passengers and Seats $= 0$ 
+ -     Alternate Hypothesis ($H_1$): There is a correlation of Passengers and Seats $\neq 0$
+ 
+By conducting a a two-tailed t-test for the correlation coefficient between two variables, we can either reject the null hypothesis or fail to reject it, providing evidence in favor or against the alternative hypothesis, respectively. 
+ 
+```{r}
+psng <- airports_factorized[,5]
+seats <- airports_factorized[,6]
+r <- cor(psng, seats)
+print(paste("R-Value:", r))
+df <- (length(psng)) - 2
+t <- r*((df/(1-(r**2)))**0.5)
+print(paste("T test statistic:", t))
+p_value <- 2*(pnorm(t, df))
+print(paste("P-Value:", p_value))
+alpha <- 0.05/100
+print(paste(p_value, "<", alpha))
+```
+
+Conclusion: Based on the results of the hypothesis test, we reject the null hypothesis at the 5% significance level since the p-value of the test is less than or equal to the chosen significance level. Therefore, we have sufficient evidence to support the alternative hypothesis that there is a correlation between Passengers and Seats.
+
+## Correlation of Airports Dataset Variables
+```{r}
+model <- lm(Passengers ~ Flights, data = airports_clean)
+summary(model)
+```
+
+```{r}
+model <- lm(Passengers ~ Seats, data = airports_clean)
+summary(model)
+```
+
+```{r}
+model <- lm(Passengers ~ Flights + Seats, data = airports_clean)
+summary(model)
+```
+
+The regression model for predicting the amount of passengers that contains the variable Seats: 
+
+$Passengers = -63.75 + 0.6800 * Seats$
+
+This appears to be a good model based on the following characteristics:
+
+1. Significance of coefficients: The estimate for the Seats variable is significant at a very high level $(\rho < 0.001)$, meaning that there is a very low chance that the estimated coefficient is due to chance.
+
+2. High R-squared value: The R-squared value of 0.9406 indicates that the model explains a high percentage of the variance in the Passengers variable, meaning that the model fits the data well, using the least amount of variables.
+
+3. Low residual standard error: The residual standard error of 1061 indicates that the model's predictions are, on average, close to the actual Passengers values in the data.
+
+4. Large F-statistic: The F-statistic of $5.69 * 10^{7}$ and associated p-value of $< 2.2 * 10^{-16}$ suggest that the overall regression model is statistically significant and that the predictor has a significant effect on the outcome.
+
+------------------------------------------------------------------------------------------------------------------------
+# Conclusion
+
+Based on the given information, it can be concluded that there is a trend of increasing passenger numbers when considering a sample of airline flights. With the mean number of flights covering 698.9 miles supported the hypothesis test, it is suggested that passengers may be more tolerant of flights that stay within this range, possibly indicating a preference for shorter flights. Additionally, the strong correlation between the number of seats and flights with the number of passengers demonstrates how airlines optimize their seating manufacturing for an adequate number of seats to always make the most of each flight, in order to reduce expenditures on airplane fuel for a small amount of passengers.
+
+It is also observed that there is no significant effect on the population of individual cities due to the number of passengers flying in and out. This could be attributed to an equal influx and outgoing amount of passengers as flights are made inbound and outbound. However, this finding should be further investigated to determine any possible long-term effects.
+
+Overall, these insights into airline flight statistics can be useful for airlines in understanding passenger behavior and optimizing their operations to meet passenger demand while minimizing waste and maximizing revenue.
+
+
